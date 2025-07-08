@@ -98,7 +98,15 @@ This is a modern full-stack web application built with React, Express.js, and Ty
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes
+
+- July 08, 2025: Added Backbase integration demo page for Blue Federal Credit Union
+- Enhanced language options to include financial services tech stack (Angular, Spring Boot, etc.)
+- Created enterprise-focused demo with real Backbase code examples
+- Added customization documentation for white-label integration options
+
 ## Changelog
 
 Changelog:
 - July 08, 2025. Initial setup
+- July 08, 2025. Added Blue FCU Backbase integration demo
