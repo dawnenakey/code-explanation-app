@@ -100,6 +100,10 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+- July 12, 2025: Migrated from in-memory storage to PostgreSQL database
+- Added DatabaseStorage class implementing IStorage interface
+- Successfully created database tables (users, code_explanations) with proper schema
+- Updated storage layer to use Drizzle ORM with Neon PostgreSQL
 - July 08, 2025: Added Backbase integration demo page for Blue Federal Credit Union
 - Enhanced language options to include financial services tech stack (Angular, Spring Boot, etc.)
 - Created enterprise-focused demo with real Backbase code examples
@@ -108,5 +112,6 @@ Preferred communication style: Simple, everyday language.
 ## Changelog
 
 Changelog:
+- July 12, 2025. Migrated to PostgreSQL database with Drizzle ORM
 - July 08, 2025. Initial setup
 - July 08, 2025. Added Blue FCU Backbase integration demo
