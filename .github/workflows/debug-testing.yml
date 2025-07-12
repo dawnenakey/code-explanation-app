@@ -1,0 +1,269 @@
+name: Debug Testing Suite
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'client/**'
+      - 'server/**'
+      - 'shared/**'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      debug_level:
+        description: 'Debug Level'
+        required: true
+        default: 'verbose'
+        type: choice
+        options:
+        - basic
+        - verbose
+        - detailed
+      test_type:
+        description: 'Test Type'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+        - all
+        - qa-only
+        - integration-only
+        - e2e-only
+
+jobs:
+  debug-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+    
+    - name: Install dependencies with debug info
+      run: |
+        echo "Installing dependencies with debug logging..."
+        npm ci --loglevel=verbose
+    
+    - name: Environment debugging
+      run: |
+        echo "=== Environment Debug Information ==="
+        echo "Node version: $(node --version)"
+        echo "NPM version: $(npm --version)"
+        echo "OS: $(uname -a)"
+        echo "Memory: $(free -h)"
+        echo "Disk: $(df -h)"
+        echo "Current directory: $(pwd)"
+        echo "Files in directory: $(ls -la)"
+        echo "=== Package.json scripts ==="
+        cat package.json | grep -A 20 '"scripts"'
+    
+    - name: Run tests with debug output
+      run: |
+        echo "Starting debug test run..."
+        
+        if [ "${{ github.event.inputs.test_type }}" == "qa-only" ] || [ "${{ github.event.inputs.test_type }}" == "all" ]; then
+          echo "=== Running QA Tests with Debug ==="
+          npx vitest run client/src/__tests__/qa/ --reporter=verbose --run 2>&1 | tee qa-debug.log
+        fi
+        
+        if [ "${{ github.event.inputs.test_type }}" == "integration-only" ] || [ "${{ github.event.inputs.test_type }}" == "all" ]; then
+          echo "=== Running Integration Tests with Debug ==="
+          npx vitest run client/src/__tests__/integration/ --reporter=verbose --run 2>&1 | tee integration-debug.log
+        fi
+        
+        if [ "${{ github.event.inputs.test_type }}" == "e2e-only" ] || [ "${{ github.event.inputs.test_type }}" == "all" ]; then
+          echo "=== Running E2E Tests with Debug ==="
+          npx vitest run client/src/__tests__/e2e/ --reporter=verbose --run 2>&1 | tee e2e-debug.log
+        fi
+    
+    - name: Analyze test failures
+      if: failure()
+      run: |
+        echo "=== Test Failure Analysis ==="
+        
+        # Check for common failure patterns
+        if [ -f qa-debug.log ]; then
+          echo "QA Test Failures:"
+          grep -i "fail\|error\|timeout" qa-debug.log || echo "No failure patterns found"
+        fi
+        
+        if [ -f integration-debug.log ]; then
+          echo "Integration Test Failures:"
+          grep -i "fail\|error\|timeout" integration-debug.log || echo "No failure patterns found"
+        fi
+        
+        if [ -f e2e-debug.log ]; then
+          echo "E2E Test Failures:"
+          grep -i "fail\|error\|timeout" e2e-debug.log || echo "No failure patterns found"
+        fi
+        
+        # Memory and resource usage
+        echo "=== Resource Usage ==="
+        free -h
+        df -h
+        
+        # Process information
+        echo "=== Running Processes ==="
+        ps aux | head -20
+    
+    - name: Generate debug report
+      if: always()
+      run: |
+        echo "=== Debug Report Generation ==="
+        
+        cat > debug-report.md << 'EOF'
+        # Debug Test Report
+        
+        ## Test Execution Summary
+        - **Workflow**: ${{ github.workflow }}
+        - **Trigger**: ${{ github.event_name }}
+        - **Branch**: ${{ github.ref_name }}
+        - **Commit**: ${{ github.sha }}
+        - **Debug Level**: ${{ github.event.inputs.debug_level }}
+        - **Test Type**: ${{ github.event.inputs.test_type }}
+        
+        ## Environment Information
+        - Node Version: $(node --version)
+        - NPM Version: $(npm --version)
+        - OS: $(uname -a)
+        - Memory: $(free -h | grep Mem)
+        - Disk: $(df -h | grep "/$")
+        
+        ## Test Results
+        EOF
+        
+        # Add test results to report
+        if [ -f qa-debug.log ]; then
+          echo "### QA Tests" >> debug-report.md
+          echo '```' >> debug-report.md
+          tail -50 qa-debug.log >> debug-report.md
+          echo '```' >> debug-report.md
+        fi
+        
+        if [ -f integration-debug.log ]; then
+          echo "### Integration Tests" >> debug-report.md
+          echo '```' >> debug-report.md
+          tail -50 integration-debug.log >> debug-report.md
+          echo '```' >> debug-report.md
+        fi
+        
+        if [ -f e2e-debug.log ]; then
+          echo "### E2E Tests" >> debug-report.md
+          echo '```' >> debug-report.md
+          tail -50 e2e-debug.log >> debug-report.md
+          echo '```' >> debug-report.md
+        fi
+        
+        # Add recommendations
+        echo "## Debug Recommendations" >> debug-report.md
+        echo "- Check test logs above for specific error messages" >> debug-report.md
+        echo "- Verify environment variables are set correctly" >> debug-report.md
+        echo "- Ensure all dependencies are properly installed" >> debug-report.md
+        echo "- Review recent code changes for potential issues" >> debug-report.md
+    
+    - name: Upload debug artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: debug-logs-${{ github.run_id }}
+        path: |
+          debug-report.md
+          qa-debug.log
+          integration-debug.log
+          e2e-debug.log
+          npm-debug.log*
+        retention-days: 14
+    
+    - name: Comment debug results on PR
+      uses: actions/github-script@v7
+      if: github.event_name == 'pull_request' && always()
+      with:
+        script: |
+          const fs = require('fs');
+          
+          let debugSummary = `## Debug Test Results 🔍\n\n`;
+          
+          if (fs.existsSync('debug-report.md')) {
+            const report = fs.readFileSync('debug-report.md', 'utf8');
+            debugSummary += `### Debug Information Available\n`;
+            debugSummary += `- Full debug report uploaded as artifact\n`;
+            debugSummary += `- Test logs captured with verbose output\n`;
+            debugSummary += `- Environment details documented\n\n`;
+            
+            // Add failure analysis if tests failed
+            if (context.payload.workflow_run && context.payload.workflow_run.conclusion === 'failure') {
+              debugSummary += `### ❌ Test Failures Detected\n`;
+              debugSummary += `Debug artifacts available for download to investigate:\n`;
+              debugSummary += `- \`debug-logs-${{ github.run_id }}\`\n\n`;
+            } else {
+              debugSummary += `### ✅ Tests Passed\n`;
+              debugSummary += `Debug information collected for reference.\n\n`;
+            }
+          }
+          
+          debugSummary += `**Debug Level**: ${{ github.event.inputs.debug_level || 'standard' }}\n`;
+          debugSummary += `**Test Scope**: ${{ github.event.inputs.test_type || 'all' }}\n`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: debugSummary
+          });
+
+  performance-debug:
+    runs-on: ubuntu-latest
+    if: contains(github.event.head_commit.message, '[perf]') || github.event.inputs.debug_level == 'detailed'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Performance profiling
+      run: |
+        echo "=== Performance Profiling ==="
+        
+        # Run tests with timing information
+        time npx vitest run client/src/__tests__/qa/ --reporter=verbose --run > perf-qa.log 2>&1
+        time npx vitest run client/src/__tests__/integration/ --reporter=verbose --run > perf-integration.log 2>&1
+        
+        # Memory usage profiling
+        echo "=== Memory Usage Analysis ==="
+        /usr/bin/time -v npx vitest run client/src/__tests__/qa/ --reporter=basic --run 2> memory-profile.log
+        
+        # Generate performance report
+        echo "=== Performance Report ===" > performance-report.md
+        echo "## Test Execution Times" >> performance-report.md
+        echo "- QA Tests: $(grep "real" perf-qa.log)" >> performance-report.md
+        echo "- Integration Tests: $(grep "real" perf-integration.log)" >> performance-report.md
+        echo "" >> performance-report.md
+        echo "## Memory Usage" >> performance-report.md
+        echo '```' >> performance-report.md
+        grep -E "(Maximum resident|User time|System time)" memory-profile.log >> performance-report.md
+        echo '```' >> performance-report.md
+    
+    - name: Upload performance data
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-debug-${{ github.run_id }}
+        path: |
+          performance-report.md
+          perf-*.log
+          memory-profile.log
+        retention-days: 7
