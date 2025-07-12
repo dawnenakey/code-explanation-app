@@ -19,11 +19,21 @@ export interface CodeExplanationResult {
     description: string;
   }>;
   performanceNotes?: string;
+  optimizationSuggestions?: Array<{
+    issue: string;
+    solution: string;
+    example: string;
+  }>;
+  complexityAnalysis?: {
+    timeComplexity: string;
+    spaceComplexity: string;
+    analysis: string;
+  };
 }
 
 export async function explainCode(code: string, language: string): Promise<CodeExplanationResult> {
   try {
-    const prompt = `Analyze the following code and provide a comprehensive explanation in JSON format.
+    const prompt = `Analyze the following code and provide a comprehensive explanation with algorithmic analysis in JSON format.
 
 Code:
 \`\`\`${language}
@@ -36,9 +46,24 @@ Please respond with a JSON object containing:
 - keyPoints: Array of 3-5 key points about the code
 - stepByStep: Array of objects with step, description, and color fields for step-by-step breakdown
 - concepts: Array of objects with name and description for key programming concepts used
-- performanceNotes: Optional performance considerations or improvements
+- performanceNotes: Performance analysis and optimization suggestions
+- optimizationSuggestions: Array of objects with issue, solution, and example fields for specific improvements
+- complexityAnalysis: Object with timeComplexity, spaceComplexity, and analysis fields
 
-Make the explanation beginner-friendly and educational. Use colors like "blue", "green", "purple", "orange" for step-by-step breakdown.`;
+Focus on:
+1. Educational explanations for beginners
+2. Algorithmic complexity analysis (Big O notation)
+3. Specific optimization recommendations with examples
+4. Data structure efficiency suggestions
+5. Common performance pitfalls and solutions
+
+For optimization suggestions, provide specific examples like:
+- "This loop has O(n²) complexity. Consider using a HashMap to reduce it to O(n)"
+- "Linear search is inefficient. Use binary search for sorted arrays"
+- "Recursive approach may cause stack overflow. Consider iterative solution"
+- "Multiple array iterations can be combined into a single loop"
+
+Be specific about data structure choices and algorithmic improvements.`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -70,7 +95,13 @@ Make the explanation beginner-friendly and educational. Use colors like "blue", 
       keyPoints: result.keyPoints || [],
       stepByStep: result.stepByStep || [],
       concepts: result.concepts || [],
-      performanceNotes: result.performanceNotes
+      performanceNotes: result.performanceNotes,
+      optimizationSuggestions: result.optimizationSuggestions || [],
+      complexityAnalysis: result.complexityAnalysis || {
+        timeComplexity: "O(1)",
+        spaceComplexity: "O(1)",
+        analysis: "Basic complexity analysis"
+      }
     };
   } catch (error) {
     console.error("OpenAI API error:", error);
