@@ -1,6 +1,7 @@
 import { users, codeExplanations, type User, type InsertUser, type CodeExplanation, type InsertCodeExplanation } from "@shared/schema";
-import { db } from "./db";
-import { eq } from "drizzle-orm";
+// Comment out database imports for local development
+// import { db } from "./db";
+// import { eq } from "drizzle-orm";
 
 // modify the interface with any CRUD methods
 // you might need
@@ -12,32 +13,47 @@ export interface IStorage {
   createCodeExplanation(codeExplanation: InsertCodeExplanation & { explanation: string; detectedLanguage: string; responseTime: number }): Promise<CodeExplanation>;
 }
 
-export class DatabaseStorage implements IStorage {
+// Use in-memory storage for local development
+export class MemoryStorage implements IStorage {
+  private users: User[] = [];
+  private codeExplanations: CodeExplanation[] = [];
+  private nextUserId = 1;
+  private nextCodeExplanationId = 1;
+
   async getUser(id: number): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user || undefined;
+    return this.users.find(user => user.id === id);
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
-    return user || undefined;
+    return this.users.find(user => user.username === username);
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(insertUser)
-      .returning();
+    const user: User = {
+      id: this.nextUserId++,
+      username: insertUser.username,
+      password: insertUser.password,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.users.push(user);
     return user;
   }
 
   async createCodeExplanation(codeExplanation: InsertCodeExplanation & { explanation: string; detectedLanguage: string; responseTime: number }): Promise<CodeExplanation> {
-    const [explanation] = await db
-      .insert(codeExplanations)
-      .values(codeExplanation)
-      .returning();
+    const explanation: CodeExplanation = {
+      id: this.nextCodeExplanationId++,
+      code: codeExplanation.code,
+      language: codeExplanation.language,
+      explanation: codeExplanation.explanation,
+      detectedLanguage: codeExplanation.detectedLanguage,
+      responseTime: codeExplanation.responseTime,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.codeExplanations.push(explanation);
     return explanation;
   }
 }
 
-export const storage = new DatabaseStorage();
+export const storage = new MemoryStorage();

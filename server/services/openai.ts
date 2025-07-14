@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-const openai = new OpenAI({ 
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || ""
 });
 
@@ -29,10 +29,25 @@ export interface CodeExplanationResult {
     spaceComplexity: string;
     analysis: string;
   };
+  blackboxComponents?: Array<{
+    name: string;
+    type: string;
+    description: string;
+    isBlackbox: boolean;
+    riskLevel: "low" | "medium" | "high";
+    recommendations: string[];
+  }>;
 }
 
 export async function explainCode(code: string, language: string): Promise<CodeExplanationResult> {
   try {
+    // Log API key status (without revealing the key)
+    const hasApiKey = !!process.env.OPENAI_API_KEY;
+    console.log(`OpenAI API Key present: ${hasApiKey}`);
+
+    if (!hasApiKey) {
+      throw new Error("OpenAI API key not found in environment variables");
+    }
     const prompt = `Analyze the following code and provide a comprehensive explanation with algorithmic analysis in JSON format.
 
 Code:
@@ -49,6 +64,7 @@ Please respond with a JSON object containing:
 - performanceNotes: Performance analysis and optimization suggestions
 - optimizationSuggestions: Array of objects with issue, solution, and example fields for specific improvements
 - complexityAnalysis: Object with timeComplexity, spaceComplexity, and analysis fields
+- blackboxComponents: Array of objects with name, type, description, isBlackbox (boolean), riskLevel ("low"/"medium"/"high"), and recommendations array for enterprise security analysis
 
 Focus on:
 1. Educational explanations for beginners
@@ -56,6 +72,7 @@ Focus on:
 3. Specific optimization recommendations with examples
 4. Data structure efficiency suggestions
 5. Common performance pitfalls and solutions
+6. Enterprise security analysis for banking applications
 
 For optimization suggestions, provide specific examples like:
 - "This loop has O(n²) complexity. Consider using a HashMap to reduce it to O(n)"
@@ -63,10 +80,23 @@ For optimization suggestions, provide specific examples like:
 - "Recursive approach may cause stack overflow. Consider iterative solution"
 - "Multiple array iterations can be combined into a single loop"
 
+For blackbox component analysis, identify:
+- External libraries, APIs, or third-party services
+- Components with unknown internal implementation
+- Risk assessment for enterprise banking environments
+- Security recommendations for each component
+- Whether components are transparent (code visible) or blackbox (opaque)
+
+Example blackbox components:
+- External APIs (high risk - unknown data handling)
+- Third-party libraries (medium risk - depends on reputation)
+- Database drivers (low risk - well-established)
+- Cloud services (medium-high risk - external dependency)
+
 Be specific about data structure choices and algorithmic improvements.`;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -83,7 +113,7 @@ Be specific about data structure choices and algorithmic improvements.`;
     });
 
     const result = JSON.parse(response.choices[0].message.content || '{}');
-    
+
     // Validate the response structure
     if (!result.explanation || !result.detectedLanguage) {
       throw new Error("Invalid response format from OpenAI");
@@ -101,10 +131,18 @@ Be specific about data structure choices and algorithmic improvements.`;
         timeComplexity: "O(1)",
         spaceComplexity: "O(1)",
         analysis: "Basic complexity analysis"
-      }
+      },
+      blackboxComponents: result.blackboxComponents || []
     };
   } catch (error) {
     console.error("OpenAI API error:", error);
+
+    // Log more detailed error information
+    if (error instanceof Error) {
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+    }
+
     throw new Error(`Failed to explain code: ${error instanceof Error ? error.message : "Unknown error"}`);
   }
 }
